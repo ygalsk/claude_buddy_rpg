@@ -1,0 +1,185 @@
+/* ── Global ─────────────────────────────────────────────────────── */
+Screen {
+    background: $surface;
+}
+
+/* ── Shared screen box ─────────────────────────────────────────── */
+.screen-box {
+    border: round $primary-lighten-2;
+    border-title-color: $secondary;
+    height: 1fr;
+}
+
+/* ── Main container ────────────────────────────────────────────── */
+#main-box {
+    border: round $accent;
+    border-title-color: yellow;
+    height: 1fr;
+}
+
+/* ── Text styles ───────────────────────────────────────────────── */
+.title { color: yellow; text-style: bold; }
+.rarity { color: $secondary; text-style: bold; }
+.level { color: white; text-style: bold; }
+.stat-label { color: white; text-style: bold; }
+.header { color: $secondary; text-style: bold; }
+.speech { color: lightskyblue; }
+.hotkey { color: yellow; text-style: bold; }
+.success { color: lightgreen; text-style: bold; }
+.warning { color: yellow; text-style: bold; }
+.error { color: tomato; text-style: bold; }
+.dim { color: $text-muted; }
+
+/* ── Mood colors ───────────────────────────────────────────────── */
+.mood-good { color: lightgreen; }
+.mood-neutral { color: yellow; }
+.mood-bad { color: tomato; }
+
+/* ── Rarity colors (RPG standard) ──────────────────────────────── */
+.rarity-common { color: #9d9d9d; }
+.rarity-uncommon { color: #1eff00; }
+.rarity-rare { color: #0070dd; }
+.rarity-epic { color: #a335ee; }
+.rarity-legendary { color: #ff8000; }
+
+/* ── Stat bar colors ───────────────────────────────────────────── */
+ProgressBar.bar-debugging .bar--bar { color: #22c55e; }
+ProgressBar.bar-patience .bar--bar { color: #06b6d4; }
+ProgressBar.bar-chaos .bar--bar { color: #ef4444; }
+ProgressBar.bar-wisdom .bar--bar { color: #a78bfa; }
+ProgressBar.bar-snark .bar--bar { color: #facc15; }
+ProgressBar.xp-bar .bar--bar { color: $secondary; }
+
+/* ── Menu items ────────────────────────────────────────────────── */
+.menu-item {
+    background: transparent;
+    color: white;
+}
+.menu-item:focus {
+    background: $accent;
+    color: white;
+    text-style: bold;
+}
+
+/* ── Bordered panels ───────────────────────────────────────────── */
+.bordered {
+    border: round $primary-lighten-2;
+}
+
+/* ── Spacing helpers ───────────────────────────────────────────── */
+.mt1 { margin-top: 1; }
+.mb1 { margin-bottom: 1; }
+.section { margin-top: 1; }
+
+/* ── Header row ────────────────────────────────────────────────── */
+#header-row {
+    height: 1;
+    layout: horizontal;
+}
+#header-rarity { width: 1fr; }
+#header-stage { width: auto; }
+#header-level { width: 1fr; text-align: right; }
+
+/* ── Art + speech side-by-side ──────────────────────────────────── */
+#art-speech {
+    height: auto;
+    min-height: 7;
+    max-height: 10;
+}
+#snail-art {
+    width: 22;
+    content-align: center middle;
+}
+#speech-bubble {
+    height: 100%;
+    border: round lightskyblue;
+    border-title-color: #facc15;
+    border-title-style: bold;
+}
+#speech-bubble.mood-good    { border: round #22c55e; }
+#speech-bubble.mood-neutral { border: round #facc15; }
+#speech-bubble.mood-bad     { border: round #ef4444; }
+
+/* ── Stat bar layout ───────────────────────────────────────────── */
+.stat-bar-row {
+    height: 1;
+    layout: horizontal;
+}
+.stat-bar-row .stat-bar-label {
+    width: 12;
+    color: white;
+    text-style: bold;
+}
+.stat-bar-row ProgressBar {
+    width: 1fr;
+}
+.stat-bar-row .stat-bar-value {
+    width: auto;
+    min-width: 12;
+    color: white;
+    text-style: bold;
+}
+
+/* ── Care overlay ──────────────────────────────────────────────── */
+.care-overlay {
+    align: center middle;
+    border: round $primary-lighten-2;
+}
+
+/* ── Evolution screen ──────────────────────────────────────────── */
+.evolution-container {
+    align: center middle;
+    border: round $primary-lighten-2;
+    border-title-color: tomato;
+}
+
+/* ── Activity screens ──────────────────────────────────────────── */
+.activity-box {
+    border: round $primary-lighten-2;
+    border-title-color: $secondary;
+    height: 1fr;
+}
+
+/* ── Battle screen (unique red border) ──────────────────────────── */
+#battle-box {
+    border: round #ef4444;
+    border-title-color: #ef4444;
+    height: 1fr;
+}
+
+/* ── Shop screen (unique gold border) ───────────────────────────── */
+#shop-box {
+    border: round #facc15;
+    border-title-color: #facc15;
+    height: 1fr;
+}
+
+/* ── Chat screen ──────────────────────────────────────────────── */
+#chat-history {
+    height: 1fr;
+    min-height: 5;
+}
+#typing-indicator {
+    height: 1;
+    color: $text-muted;
+}
+#chat-input {
+    dock: bottom;
+    margin: 0 1;
+}
+ChatMessage {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+/* ── Name divider ──────────────────────────────────────────────── */
+.name-divider {
+    color: yellow;
+    text-style: bold;
+    margin-top: 1;
+}
+
+/* ── Care stat row ─────────────────────────────────────────────── */
+.care-row {
+    height: 1;
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "jamb": {
+      "command": "python",
+      "args": ["-m", "jamb.mcp_server"],
+      "cwd": "/home/dkremer/jamb"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "jamb": {
+      "command": "/usr/bin/python",
+      "args": ["-m", "jamb.mcp_server"],
+      "env": {
+        "PYTHONPATH": "/home/dkremer/jamb"
+      }
+    }
+  }
+}
