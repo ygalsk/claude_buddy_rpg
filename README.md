@@ -12,29 +12,63 @@ A TUI dungeon crawler and companion system for [Claude Code](https://claude.com/
 
 ## Install
 
+Requires Python 3.12+.
+
+### TUI Only
+
 ```bash
 pip install jamb
+jamb
 ```
 
-For MCP server support:
+### Full Claude Code Integration
 
 ```bash
 pip install "jamb[mcp]"
+jamb setup
 ```
 
-Requires Python 3.12+.
+`jamb setup` syncs your companion's species/rarity from your Claude Code account and bootstraps the art cache.
 
-## Quick Start
+### Plugin Setup
+
+After installing the Python package, add the Claude Code plugin for hooks (auto-rewards), reactions, and the statusline:
+
+1. Clone or download this repo
+2. Add to `~/.claude/settings.json`:
+
+```json
+{
+  "plugins": {
+    "jamb": {
+      "source": {
+        "source": "directory",
+        "path": "/path/to/jamb-plugin"
+      }
+    }
+  }
+}
+```
+
+3. Configure the animated statusline (optional):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/path/to/jamb-plugin/statusline/jamb-status.sh",
+    "refreshInterval": 1
+  }
+}
+```
+
+### Using pipx (recommended)
+
+[pipx](https://pipx.pypa.io/) isolates dependencies and puts `jamb` on your PATH:
 
 ```bash
-# Launch the TUI
-jamb
-
-# Check companion status
-jamb status
-
-# Run the MCP server for Claude Code
-jamb mcp
+pipx install "jamb[mcp]"
+jamb setup
 ```
 
 ## How It Works
@@ -153,14 +187,17 @@ The `/buddy` skill routes commands to MCP tools:
 
 ```bash
 jamb                    # Launch TUI
+jamb setup              # Configure Claude Code integration
 jamb status             # Show stats, level, mood
 jamb status --json      # Full state as JSON
 jamb reward -s STAT -a AMOUNT -x XP   # Manual stat reward
 jamb sync               # Sync with native Claude Code buddy
+jamb rename NAME        # Rename your companion
 jamb react -r REASON    # Trigger a reaction
 jamb buddy-comment -t TEXT  # Set speech bubble text
 jamb mute / unmute      # Toggle reactions
 jamb pet                # Pet your companion
+jamb art-cache          # Regenerate statusline art cache
 jamb mcp                # Run MCP server
 ```
 

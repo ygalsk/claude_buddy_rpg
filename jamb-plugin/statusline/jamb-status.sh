@@ -35,7 +35,7 @@ cat > /dev/null  # drain stdin
 
 # ─── Bootstrap art cache if missing ─────────────────────────────────────────
 if [ ! -f "$ART_CACHE" ]; then
-    PYTHONPATH=/home/dkremer/jamb python3 -m jamb.art_cache 2>/dev/null
+    jamb art-cache 2>/dev/null
 fi
 [ -f "$ART_CACHE" ] || exit 0
 

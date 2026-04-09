@@ -142,6 +142,41 @@ def cmd_pet(args: argparse.Namespace) -> None:
         print("Reaction skipped (muted or cooldown)")
 
 
+def cmd_art_cache(args: argparse.Namespace) -> None:
+    """Regenerate the art cache for the statusline."""
+    from .art_cache import write_art_cache
+
+    state = persistence.load_quiet()
+    write_art_cache(state)
+    print("Art cache updated.")
+
+
+def cmd_rename(args: argparse.Namespace) -> None:
+    """Rename the companion."""
+    state = persistence.load_quiet()
+    state.name = args.name
+    persistence.save(state)
+    print(f"Renamed to {state.name}")
+
+
+def cmd_hook_react(args: argparse.Namespace) -> None:
+    """Hook handler: detect errors/test-fails/large-diffs from stdin JSON."""
+    from .hook_handlers import handle_react
+    handle_react()
+
+
+def cmd_hook_comment(args: argparse.Namespace) -> None:
+    """Hook handler: extract <!-- buddy: --> comments from stdin JSON."""
+    from .hook_handlers import handle_comment
+    handle_comment()
+
+
+def cmd_setup(args: argparse.Namespace) -> None:
+    """Configure Claude Code integration."""
+    from .setup import run_setup
+    run_setup()
+
+
 def cmd_mcp(args: argparse.Namespace) -> None:
     """Run the MCP server."""
     from .mcp_server import run_server
@@ -188,6 +223,22 @@ def cli_main() -> None:
     # pet
     sub.add_parser("pet", help="Pet the companion")
 
+    # art-cache
+    sub.add_parser("art-cache", help="Regenerate statusline art cache")
+
+    # rename
+    rename_p = sub.add_parser("rename", help="Rename your companion")
+    rename_p.add_argument("name", help="New name for the companion")
+
+    # hook-react
+    sub.add_parser("hook-react", help="Hook handler: detect errors/test-fails from stdin")
+
+    # hook-comment
+    sub.add_parser("hook-comment", help="Hook handler: extract buddy comments from stdin")
+
+    # setup
+    sub.add_parser("setup", help="Configure Claude Code integration")
+
     # mcp
     sub.add_parser("mcp", help="Run MCP server for Claude Code integration")
 
@@ -211,6 +262,16 @@ def cli_main() -> None:
         cmd_unmute(args)
     elif args.command == "pet":
         cmd_pet(args)
+    elif args.command == "art-cache":
+        cmd_art_cache(args)
+    elif args.command == "rename":
+        cmd_rename(args)
+    elif args.command == "hook-react":
+        cmd_hook_react(args)
+    elif args.command == "hook-comment":
+        cmd_hook_comment(args)
+    elif args.command == "setup":
+        cmd_setup(args)
     elif args.command == "mcp":
         cmd_mcp(args)
     else:
