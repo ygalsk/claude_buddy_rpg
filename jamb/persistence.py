@@ -5,6 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from .art_cache import write_art_cache
 from .models import JambState
 
 SAVE_DIR = Path.home() / ".claude" / "jamb"
@@ -46,3 +47,8 @@ def save(state: JambState) -> None:
         except OSError:
             pass
         raise
+    # Update art cache if art-relevant fields changed (cheap no-op otherwise)
+    try:
+        write_art_cache(state)
+    except Exception:
+        pass  # non-critical — statusline degrades gracefully
