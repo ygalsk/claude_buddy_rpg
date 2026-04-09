@@ -1,3 +1,0 @@
-- level and stats caps are based on buddy rarity 
-- add inventory in battlles not just consume whatever item but lets check all th items in the backpack and lets u consume any coinsumalbe once per turn 
-- make buddys battle, my jamb buddy against another calude code buddy from another persons accoutn 
