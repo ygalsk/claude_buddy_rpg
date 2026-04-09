@@ -19,6 +19,11 @@ TRAP = "^"
 STAIRS = ">"
 ENTRANCE = "@"
 BOSS = "B"
+# ── New room types ──────────────────────────────────────
+SHOP = "$"
+FORK = "Y"
+EXTRACTION = "E"
+CURSED_CHEST = "C"
 
 ROOM_DESCRIPTIONS = {
     EMPTY: [
@@ -44,7 +49,32 @@ ROOM_DESCRIPTIONS = {
         "An old deploy artifact with valuables.",
         "A forgotten stash of dev tools.",
     ],
+    SHOP: [
+        "A vendor sits behind a makeshift desk of stacked monitors.",
+        "A traveling merchant offers wares from their cargo container.",
+    ],
+    FORK: [
+        "The corridor splits into two paths.",
+    ],
+    EXTRACTION: [
+        "A secure backup terminal hums with green light.",
+        "An extraction point — bank your progress here.",
+    ],
+    CURSED_CHEST: [
+        "A glowing chest pulses with unstable energy...",
+        "A corrupted data archive. Open at your own risk.",
+    ],
 }
+
+# Fork room options — pairs of (description, hidden_room_type)
+FORK_OPTIONS = [
+    ("You hear growling from the left", ENEMY),
+    ("The right path smells of gold", TREASURE),
+    ("A warm glow beckons left", REST),
+    ("The right path crackles with energy", TRAP),
+    ("Faint humming comes from the left", TREASURE),
+    ("The right path is eerily silent", ENEMY),
+]
 
 
 @dataclass
@@ -57,6 +87,8 @@ class Room:
     loot: dict | None = None
     description: str = ""
     cleared: bool = False
+    trap: dict | None = None  # biome trap data
+    fork_options: list | None = None  # [(description, hidden_type), ...]
 
     def as_dict(self) -> dict:
         return {
@@ -67,11 +99,13 @@ class Room:
             "loot": self.loot,
             "description": self.description,
             "cleared": self.cleared,
+            "trap": self.trap,
+            "fork_options": self.fork_options,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> Room:
-        return cls(**data)
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -83,10 +117,31 @@ class Floor:
     player_x: int = 0
     player_y: int = 0
 
-    def generate(self, seed: int | None = None) -> None:
+    def generate(
+        self,
+        seed: int | None = None,
+        biome: str = "generic",
+        stats: dict | None = None,
+        floor_modifier: dict | None = None,
+    ) -> None:
         rng = random.Random(seed)
-        self.rooms = []
+        stats = stats or {}
 
+        # Load biome data for room descriptions and traps
+        from . import data_loader
+        biome_data = data_loader.load_biome(biome)
+        biome_descs = biome_data.get("room_descriptions", {})
+        biome_traps = biome_data.get("traps", [])
+        biome_clues = biome_data.get("boss_clues", [])
+
+        # Merge biome room descriptions with defaults
+        room_descs = dict(ROOM_DESCRIPTIONS)
+        for key, descs in biome_descs.items():
+            symbol = _desc_key_to_symbol(key)
+            if symbol and descs:
+                room_descs[symbol] = descs
+
+        self.rooms = []
         for y in range(self.height):
             row = []
             for x in range(self.width):
@@ -94,7 +149,6 @@ class Floor:
             self.rooms.append(row)
 
         # Carve a path from entrance to stairs
-        # Start at top-left, stairs at bottom-right area
         self.rooms[0][0].room_type = ENTRANCE
         self.rooms[0][0].explored = True
         self.player_x = 0
@@ -105,7 +159,7 @@ class Floor:
         stair_y = rng.randint(self.height - 2, self.height - 1)
         self.rooms[stair_y][stair_x].room_type = STAIRS
 
-        # Create walls (~25% of remaining cells)
+        # Create walls (~20% of remaining cells)
         available = [
             (x, y) for y in range(self.height) for x in range(self.width)
             if (x, y) not in ((0, 0), (stair_x, stair_y))
@@ -116,13 +170,11 @@ class Floor:
         wall_candidates = available[:num_walls]
         remaining = available[num_walls:]
 
-        # Only place walls if they don't block the path
         for wx, wy in wall_candidates:
             self.rooms[wy][wx].room_type = WALL
 
         # Verify path exists, remove walls if needed
         if not self._path_exists(0, 0, stair_x, stair_y):
-            # Remove walls until path exists
             for wx, wy in wall_candidates:
                 self.rooms[wy][wx].room_type = EMPTY
                 remaining.append((wx, wy))
@@ -136,14 +188,14 @@ class Floor:
             if self.rooms[y][x].room_type == EMPTY
         ]
 
-        # Place boss near stairs
+        # ── Boss (near stairs) ──────────────────────────────
         boss_placed = False
         for bx, by in [(stair_x - 1, stair_y), (stair_x, stair_y - 1)]:
             if 0 <= bx < self.width and 0 <= by < self.height:
                 room = self.rooms[by][bx]
                 if room.room_type == EMPTY:
                     room.room_type = BOSS
-                    boss = boss_for_floor(self.number)
+                    boss = boss_for_floor(self.number, biome)
                     room.enemy = dict(boss)
                     room.description = f"The air crackles. {boss['name']} blocks your path!"
                     boss_placed = True
@@ -155,13 +207,17 @@ class Floor:
             bx, by = open_cells.pop(0)
             room = self.rooms[by][bx]
             room.room_type = BOSS
-            boss = boss_for_floor(self.number)
+            boss = boss_for_floor(self.number, biome)
             room.enemy = dict(boss)
             room.description = f"The air crackles. {boss['name']} blocks your path!"
 
-        # Enemies (3-5 per floor)
-        enemies = enemies_for_floor(self.number)
-        num_enemies = min(rng.randint(3, 5), len(open_cells))
+        # ── Enemies ─────────────────────────────────────────
+        enemies = enemies_for_floor(self.number, biome)
+        modifier_effects = (floor_modifier or {}).get("effects", {})
+        enemy_mult = modifier_effects.get("enemy_count_mult", 1.0)
+        base_enemies = rng.randint(3, 5)
+        num_enemies = min(int(base_enemies * enemy_mult), len(open_cells))
+
         for i in range(num_enemies):
             if not open_cells:
                 break
@@ -172,24 +228,26 @@ class Floor:
             room.enemy = dict(enemy)
             room.description = f"{enemy['name']} appears! {enemy['description']}"
 
-        # Treasures (1-2)
-        num_treasure = min(rng.randint(1, 2), len(open_cells))
+        # ── Treasures ───────────────────────────────────────
+        extra_treasure = int(modifier_effects.get("extra_treasure", 0))
+        num_treasure = min(rng.randint(1, 2) + extra_treasure, len(open_cells))
         for i in range(num_treasure):
             if not open_cells:
                 break
             x, y = open_cells.pop(0)
             room = self.rooms[y][x]
             room.room_type = TREASURE
-            room.description = rng.choice(ROOM_DESCRIPTIONS[TREASURE])
+            room.description = rng.choice(room_descs.get(TREASURE, ROOM_DESCRIPTIONS[TREASURE]))
 
-        # Rest point (1)
-        if open_cells:
+        # ── Rest point (skip if Cursed modifier) ────────────
+        no_rest = modifier_effects.get("no_rest", False)
+        if not no_rest and open_cells:
             x, y = open_cells.pop(0)
             room = self.rooms[y][x]
             room.room_type = REST
-            room.description = rng.choice(ROOM_DESCRIPTIONS[REST])
+            room.description = rng.choice(room_descs.get(REST, ROOM_DESCRIPTIONS[REST]))
 
-        # Trap (1-2)
+        # ── Traps ───────────────────────────────────────────
         num_traps = min(rng.randint(1, 2), len(open_cells))
         for i in range(num_traps):
             if not open_cells:
@@ -197,14 +255,88 @@ class Floor:
             x, y = open_cells.pop(0)
             room = self.rooms[y][x]
             room.room_type = TRAP
-            room.description = rng.choice(ROOM_DESCRIPTIONS[TRAP])
+            if biome_traps:
+                trap = rng.choice(biome_traps)
+                room.trap = dict(trap)
+                room.description = trap.get("description", rng.choice(ROOM_DESCRIPTIONS[TRAP]))
+            else:
+                room.description = rng.choice(room_descs.get(TRAP, ROOM_DESCRIPTIONS[TRAP]))
+
+        # ── Shop (every 3-4 floors) ────────────────────────
+        if self.number % 3 == 0 and open_cells:
+            x, y = open_cells.pop(0)
+            room = self.rooms[y][x]
+            room.room_type = SHOP
+            room.description = rng.choice(room_descs.get(SHOP, ROOM_DESCRIPTIONS[SHOP]))
+
+        # ── Extraction (every 5 floors, near stairs) ────────
+        if self.number % 5 == 0 and open_cells:
+            x, y = open_cells.pop(0)
+            room = self.rooms[y][x]
+            room.room_type = EXTRACTION
+            room.description = rng.choice(room_descs.get(EXTRACTION, ROOM_DESCRIPTIONS[EXTRACTION]))
+
+        # ── Cursed chest (15% chance, replaces a cell) ──────
+        if rng.random() < 0.15 and open_cells:
+            x, y = open_cells.pop(0)
+            room = self.rooms[y][x]
+            room.room_type = CURSED_CHEST
+            room.description = rng.choice(room_descs.get(CURSED_CHEST, ROOM_DESCRIPTIONS[CURSED_CHEST]))
+
+        # ── Fork room (random, not too frequent) ────────────
+        if rng.random() < 0.25 and open_cells:
+            x, y = open_cells.pop(0)
+            room = self.rooms[y][x]
+            room.room_type = FORK
+            room.description = rng.choice(room_descs.get(FORK, ROOM_DESCRIPTIONS[FORK]))
+            # Pick two random options
+            opts = rng.sample(FORK_OPTIONS, min(2, len(FORK_OPTIONS)))
+            room.fork_options = [(o[0], o[1]) for o in opts]
+
+        # ── Companion stat influences ───────────────────────
+        wisdom = stats.get("wisdom", 0)
+        chaos_stat = stats.get("chaos", 0)
+
+        # High WISDOM: reveal 1-2 extra rooms
+        if wisdom >= 80:
+            unexplored = [
+                (x, y) for y in range(self.height) for x in range(self.width)
+                if not self.rooms[y][x].explored and self.rooms[y][x].room_type != WALL
+            ]
+            reveal_count = min(rng.randint(1, 2), len(unexplored))
+            for rx, ry in rng.sample(unexplored, reveal_count) if unexplored else []:
+                self.rooms[ry][rx].explored = True
+
+        # High CHAOS: 20% chance for weird encounter (bonus treasure or extra enemy)
+        if chaos_stat >= 80 and rng.random() < 0.2 and open_cells:
+            x, y = open_cells.pop(0)
+            room = self.rooms[y][x]
+            if rng.random() < 0.5:
+                room.room_type = TREASURE
+                room.description = "A chaotic rift reveals unexpected loot!"
+            else:
+                room.room_type = ENEMY
+                enemy = rng.choice(enemies) if enemies else None
+                if enemy:
+                    room.enemy = dict(enemy)
+                    room.description = f"A chaos rift spawns {enemy['name']}!"
+
+        # ── Boss clues on boss floors ───────────────────────
+        if biome_clues:
+            clue_rooms = [
+                (x, y) for y in range(self.height) for x in range(self.width)
+                if self.rooms[y][x].room_type == EMPTY and not self.rooms[y][x].description.startswith("A ")
+            ]
+            num_clues = min(rng.randint(1, 2), len(clue_rooms), len(biome_clues))
+            for cx, cy in rng.sample(clue_rooms, num_clues) if clue_rooms else []:
+                self.rooms[cy][cx].description = rng.choice(biome_clues)
 
         # Fill remaining with descriptions
         for y in range(self.height):
             for x in range(self.width):
                 room = self.rooms[y][x]
                 if room.room_type == EMPTY and not room.description:
-                    room.description = rng.choice(ROOM_DESCRIPTIONS[EMPTY])
+                    room.description = rng.choice(room_descs.get(EMPTY, ROOM_DESCRIPTIONS[EMPTY]))
 
     def _path_exists(self, sx: int, sy: int, ex: int, ey: int) -> bool:
         """BFS to check if a path exists between two points."""
@@ -245,11 +377,21 @@ class Floor:
         self.player_y += dy
         room = self.current_room()
         room.explored = True
-        # Reveal adjacent rooms
+        # Reveal adjacent rooms (Fog modifier: no reveal)
         for adx, ady in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             adj = self.get_room(self.player_x + adx, self.player_y + ady)
             if adj and adj.room_type != WALL:
                 adj.explored = True
+        return room
+
+    def move_player_fog(self, dx: int, dy: int) -> Room | None:
+        """Move with fog modifier — only reveal current room, not adjacent."""
+        if not self.can_move(dx, dy):
+            return None
+        self.player_x += dx
+        self.player_y += dy
+        room = self.current_room()
+        room.explored = True
         return room
 
     def render_map(self) -> str:
@@ -291,6 +433,14 @@ class Floor:
                     cell = f"{sp_l}[bold #BB9AF7]^[/]{sp_r}"
                 elif room.room_type == STAIRS:
                     cell = f"{sp_l}[bold #BB9AF7]>[/]{sp_r}"
+                elif room.room_type == SHOP:
+                    cell = f"{sp_l}[bold #E0AF68]$[/]{sp_r}"
+                elif room.room_type == FORK:
+                    cell = f"{sp_l}[bold #7DCFFF]Y[/]{sp_r}"
+                elif room.room_type == EXTRACTION:
+                    cell = f"{sp_l}[bold #9ECE6A]E[/]{sp_r}"
+                elif room.room_type == CURSED_CHEST:
+                    cell = f"{sp_l}[bold #F7768E]C[/]{sp_r}"
                 else:
                     cell = " " * cw
                 row += cell + "│"
@@ -321,3 +471,13 @@ class Floor:
         f.player_x = data["player_x"]
         f.player_y = data["player_y"]
         return f
+
+
+def _desc_key_to_symbol(key: str) -> str | None:
+    """Convert biome JSON description keys to room type symbols."""
+    mapping = {
+        "empty": EMPTY, "trap": TRAP, "rest": REST, "treasure": TREASURE,
+        "shop": SHOP, "fork": FORK, "extraction": EXTRACTION,
+        "cursed_chest": CURSED_CHEST,
+    }
+    return mapping.get(key)

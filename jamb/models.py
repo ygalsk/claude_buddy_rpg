@@ -97,6 +97,7 @@ class JambState:
     equipment: dict[str, str] = field(default_factory=dict)
     gold: int = 0
     dungeon_highest_floor: int = 0
+    dungeon_history: Optional[dict] = None  # run history, playstyle, unlocks
     inventory_capacity: int = 15
     # Native buddy bone sync
     native_rarity: Optional[str] = None  # e.g., "Uncommon", "Rare"
@@ -250,6 +251,7 @@ class JambState:
             "equipment": self.equipment,
             "gold": self.gold,
             "dungeon_highest_floor": self.dungeon_highest_floor,
+            "dungeon_history": self.dungeon_history,
             "inventory_capacity": self.inventory_capacity,
             "native_rarity": self.native_rarity,
             "native_stats": self.native_stats,
@@ -282,6 +284,7 @@ class JambState:
         state.equipment = data.get("equipment", {})
         state.gold = data.get("gold", 0)
         state.dungeon_highest_floor = data.get("dungeon_highest_floor", 0)
+        state.dungeon_history = data.get("dungeon_history")
         state.inventory_capacity = data.get("inventory_capacity", 15)
         state.native_rarity = data.get("native_rarity")
         state.native_stats = data.get("native_stats")

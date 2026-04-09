@@ -1,0 +1,32 @@
+[
+  {
+    "id": "fog",
+    "name": "Fog",
+    "description": "Dense fog limits visibility to the current room only.",
+    "effects": {"reveal_radius": 0}
+  },
+  {
+    "id": "swarm",
+    "name": "Swarm",
+    "description": "Double the enemies, double the rewards.",
+    "effects": {"enemy_count_mult": 2.0, "xp_mult": 2.0}
+  },
+  {
+    "id": "cursed",
+    "name": "Cursed",
+    "description": "No rest rooms spawn on this floor.",
+    "effects": {"no_rest": true}
+  },
+  {
+    "id": "haunted",
+    "name": "Haunted",
+    "description": "Defeated enemies have a chance to return.",
+    "effects": {"respawn_chance": 0.3}
+  },
+  {
+    "id": "golden",
+    "name": "Golden",
+    "description": "Fortune favors the bold. Extra gold and treasure.",
+    "effects": {"gold_mult": 2.0, "extra_treasure": 1}
+  }
+]

@@ -1,0 +1,118 @@
+{
+  "id": "python",
+  "name": "The Pythonic Depths",
+  "color": "#3572A5",
+  "enemies": [
+    {
+      "id": "indentation_error", "name": "IndentationError",
+      "hp": 22, "attack": 7, "defense": 2, "speed": 6,
+      "xp": 8, "gold": 5, "floor_min": 1, "type": "patience",
+      "loot": [["coffee", 0.4]],
+      "description": "One wrong space and everything falls apart.",
+      "art": "  >>> \n  Tab?\n Space?",
+      "special": null
+    },
+    {
+      "id": "type_error", "name": "TypeError",
+      "hp": 28, "attack": 6, "defense": 3, "speed": 5,
+      "xp": 9, "gold": 6, "floor_min": 1, "type": "debugging",
+      "loot": [["rubber_duck", 0.2], ["coffee", 0.3]],
+      "description": "Expected int, got str. Expected str, got NoneType.",
+      "art": " TypeError\n  (X_X)\n  /?\\",
+      "special": "dynamic_typing"
+    },
+    {
+      "id": "circular_import", "name": "Circular Import",
+      "hp": 35, "attack": 5, "defense": 5, "speed": 4,
+      "xp": 12, "gold": 8, "floor_min": 1, "type": "wisdom",
+      "loot": [["pizza_slice", 0.3]],
+      "description": "A imports B imports C imports A imports B imports...",
+      "art": " A→B→C\n ↑   ↓\n └←←←┘",
+      "special": "double_attack"
+    },
+    {
+      "id": "gil_monster", "name": "GIL Monster",
+      "hp": 40, "attack": 9, "defense": 4, "speed": 3,
+      "xp": 15, "gold": 11, "floor_min": 2, "type": "patience",
+      "loot": [["energy_drink", 0.3], ["ssh_key", 0.08]],
+      "description": "Only one thread shall pass. The rest must wait.",
+      "art": " [G.I.L]\n  >:|  \n /LOCK\\",
+      "special": "gil_lock"
+    },
+    {
+      "id": "import_star", "name": "from * import *",
+      "hp": 30, "attack": 11, "defense": 2, "speed": 8,
+      "xp": 14, "gold": 10, "floor_min": 2, "type": "chaos",
+      "loot": [["code_review_scroll", 0.2], ["regex_sword", 0.05]],
+      "description": "Imports everything. Including the kitchen sink. And the kitchen.",
+      "art": "from *\nimport\n  * * *",
+      "special": "dynamic_typing"
+    },
+    {
+      "id": "global_variable", "name": "Global Variable",
+      "hp": 50, "attack": 8, "defense": 7, "speed": 5,
+      "xp": 18, "gold": 14, "floor_min": 3, "type": "snark",
+      "loot": [["git_stash", 0.15], ["env_file", 0.05]],
+      "description": "Everywhere at once. Mutated by everything. Trusted by no one.",
+      "art": "GLOBAL\n _g=?_\n|     |\n|SCOPE|",
+      "special": "corrupt"
+    }
+  ],
+  "bosses": [
+    {
+      "id": "the_zen", "name": "The Anti-Zen",
+      "hp": 90, "attack": 11, "defense": 7, "speed": 5,
+      "xp": 45, "gold": 35, "floor_min": 1, "type": "wisdom",
+      "loot": [["pep8_katana", 0.5], ["design_doc", 0.3]],
+      "description": "Beautiful is ugly. Explicit is implicit. Simple is complex.",
+      "art": "  import\n   this\n ~ANTI~\n  ~ZEN~",
+      "special": "dynamic_typing",
+      "boss_phases": 2
+    },
+    {
+      "id": "the_metaclass", "name": "The Metaclass",
+      "hp": 150, "attack": 14, "defense": 9, "speed": 4,
+      "xp": 75, "gold": 60, "floor_min": 3, "type": "wisdom",
+      "loot": [["architecture_wand", 0.4], ["github_copilot", 0.1]],
+      "description": "A class that creates classes that create classes. Nobody understands it. Not even itself.",
+      "art": " ┌─META─┐\n │class │\n │ class│\n │class │\n └──────┘",
+      "special": "corrupt",
+      "boss_phases": 3
+    }
+  ],
+  "traps": [
+    {"id": "whitespace_trap", "name": "Mixed Tabs & Spaces", "damage_range": [5, 12], "description": "The ground shifts between tabs and spaces beneath your feet!", "effect": null},
+    {"id": "version_trap", "name": "Python 2 Artifact", "damage_range": [8, 15], "description": "print 'DAMAGE' — wait, that's not a function!", "effect": "stun"},
+    {"id": "venv_trap", "name": "Wrong Virtualenv", "damage_range": [4, 10], "description": "You activated the wrong virtualenv. Nothing works.", "effect": null}
+  ],
+  "room_descriptions": {
+    "empty": [
+      "Jupyter notebooks litter the floor, outputs still running.",
+      "A pip install is frozen mid-download.",
+      "Scattered .pyc files crunch underfoot.",
+      "A requirements.txt longer than the actual code.",
+      "The walls are lined with decorators, stacked impossibly high."
+    ],
+    "rest": [
+      "A conda environment that actually works. Rest here.",
+      "A clean virtualenv with all dependencies installed.",
+      "A cozy IPython session with tab completion."
+    ],
+    "treasure": [
+      "A well-documented module with type hints!",
+      "An ancient __init__.py guards something valuable.",
+      "A perfectly formatted f-string reveals hidden loot."
+    ]
+  },
+  "floor_flavor": [
+    "The air smells of whitespace and broken dreams...",
+    "Indentation errors echo through the corridors.",
+    "A faint 'import antigravity' is whispered from the walls.",
+    "The Zen of Python is inscribed on the ceiling. Someone crossed half of it out."
+  ],
+  "boss_clues": [
+    "PEP violations are scrawled on every surface...",
+    "You find a crumpled list comprehension three screens wide.",
+    "The type hints here contradict each other violently."
+  ]
+}

@@ -1,16 +1,10 @@
 Metadata-Version: 2.4
 Name: jamb
 Version: 0.2.0
-Summary: TUI tamagotchi training ground for Jamb, your ★★★ RARE snail companion
+Summary: Terminal companion with dungeon crawler — lives in Claude Code's statusline
 Requires-Python: >=3.12
 Requires-Dist: textual>=1.0
-Provides-Extra: chat
-Requires-Dist: anthropic>=0.40; extra == "chat"
-Provides-Extra: local
-Requires-Dist: openai>=1.0; extra == "local"
 Provides-Extra: mcp
 Requires-Dist: mcp>=1.0; extra == "mcp"
 Provides-Extra: all
-Requires-Dist: anthropic>=0.40; extra == "all"
-Requires-Dist: openai>=1.0; extra == "all"
 Requires-Dist: mcp>=1.0; extra == "all"

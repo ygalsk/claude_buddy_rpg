@@ -27,6 +27,7 @@ class BattleScreen(Screen):
         ("s", "special", "Special"),
         ("i", "use_item", "Item"),
         ("w", "swap_weapon", "Swap"),
+        ("t", "talk", "Talk"),
         ("f", "flee", "Flee"),
     ]
 
@@ -38,6 +39,7 @@ class BattleScreen(Screen):
         self._swap_weapons: list[dict] = []
         self._item_selecting = False
         self._item_list: list[tuple[int, dict]] = []
+        self._fled = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="battle-box") as box:
@@ -62,6 +64,9 @@ class BattleScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        # Write any pre-combat log entries (taunts, hints, debug info)
+        if self._combat.log:
+            self._write_log(self._combat.log[:])
         self._refresh()
 
     def _refresh(self) -> None:
@@ -73,11 +78,18 @@ class BattleScreen(Screen):
         enemy_hp_bar = render_bar(c.enemy_hp, c.enemy_max_hp)
         enemy_type = c.enemy.get("type", "???")
         type_color = TYPE_COLORS.get(enemy_type, "#888888")
+        phase_label = ""
+        if c.boss_max_phases > 1:
+            phase_label = f"  [bold #FF9E64]Phase {c.boss_phase}/{c.boss_max_phases}[/]"
+        enemy_effects_str = " ".join(e.display_tag() for e in c.enemy_effects)
+        if enemy_effects_str:
+            enemy_effects_str = f"  [{C.PRIMARY}]{enemy_effects_str}[/]"
         self.query_one("#enemy-info", Label).update(
             f"  [bold {C.ERROR}]{c.enemy['name']}[/]  "
             f"[{type_color}][{enemy_type.upper()}][/]  "
             f"[{C.ERROR}]{enemy_hp_bar}[/] {c.enemy_hp}/{c.enemy_max_hp} HP  "
             f"ATK:{c.enemy_attack} DEF:{c.enemy_defense}"
+            f"{phase_label}{enemy_effects_str}"
         )
 
         player_hp_bar = render_bar(c.player_hp, c.player_max_hp)
@@ -96,10 +108,15 @@ class BattleScreen(Screen):
                 weapon_name = weapon_data["name"] + " "
             weapon_info = f"  [{wt_color}]{weapon_name}[{c.weapon_type.upper()}][/]"
 
+        player_effects_str = " ".join(e.display_tag() for e in c.player_effects)
+        if player_effects_str:
+            player_effects_str = f"  [{C.ERROR}]{player_effects_str}[/]"
+
         self.query_one("#player-info", Label).update(
             f"  [bold {C.SUCCESS}]Jamb[/]  "
             f"[{C.SUCCESS}]{player_hp_bar}[/] {c.player_hp}/{c.player_max_hp} HP  "
-            f"ATK:{c.player_attack + c.attack_buff} DEF:{c.player_defense} SPD:{c.player_speed}{buffs}{weapon_info}"
+            f"ATK:{c.player_attack + c.attack_buff} DEF:{c.player_defense} SPD:{c.player_speed}"
+            f"{buffs}{weapon_info}{player_effects_str}"
         )
 
         if self._awaiting_continue:
@@ -150,16 +167,36 @@ class BattleScreen(Screen):
                 "chaos": "Chaos Strike", "wisdom": "Analyze", "snark": "Roast",
             }
             special_name = special_names.get(highest, "Special")
+            # Show Talk action if SNARK >= 80 and not a boss
+            talk_label = ""
+            snark = app.state.stats.snark
+            is_boss = c.enemy.get("boss_phases", 1) > 1 or c.boss_max_phases > 1
+            if snark >= 80 and not is_boss:
+                talk_label = f"  [bold {C.ACCENT}]T[/]alk"
+
+            # Show Restore if git stash HP is saved
+            restore_label = ""
+            run = app.dungeon_run
+            if run and run.saved_hp is not None:
+                restore_label = f"  [bold {C.ACCENT}]R[/]estore"
+
             self.query_one("#action-prompt", Label).update(
                 f"  [bold {C.ACCENT}]A[/]ttack  [bold {C.ACCENT}]D[/]efend  "
                 f"[bold {C.ACCENT}]S[/]pecial({special_name})  [bold {C.ACCENT}]I[/]tem  "
-                f"[bold {C.ACCENT}]W[/]eapon  [bold {C.ACCENT}]F[/]lee"
+                f"[bold {C.ACCENT}]W[/]eapon{talk_label}{restore_label}  [bold {C.ACCENT}]F[/]lee"
             )
 
     def _write_log(self, entries: list[str]) -> None:
         log = self.query_one("#battle-log", RichLog)
         for entry in entries:
             log.write(f"  > {entry}")
+
+    def _track_action(self, action: str) -> None:
+        """Track player action for playstyle history."""
+        app: JambApp = self.app  # type: ignore[assignment]
+        run = app.dungeon_run
+        if run and action in run.action_counts:
+            run.action_counts[action] += 1
 
     def _do_enemy_turn(self) -> None:
         c = self._combat
@@ -180,8 +217,16 @@ class BattleScreen(Screen):
     def _end_battle(self) -> None:
         app: JambApp = self.app  # type: ignore[assignment]
         c = self._combat
-        if c.victory:
+        if self._fled:
+            # Fled — just return to dungeon, HP preserved
+            if app.dungeon_run:
+                app.dungeon_run.hp = c.player_hp
+            app.show_dungeon()
+        elif c.victory:
             xp, gold, loot = c.calculate_rewards()
+            # Sync HP back to dungeon run
+            if app.dungeon_run:
+                app.dungeon_run.hp = c.player_hp
             app.combat_victory(xp, gold, loot)
         else:
             app.dungeon_death()
@@ -202,8 +247,9 @@ class BattleScreen(Screen):
                     inv_idx, item = self._item_list[idx]
                     app: JambApp = self.app  # type: ignore[assignment]
                     log_before = len(self._combat.log)
-                    self._combat.player_use_item(item)
+                    self._combat.player_use_item(item, dungeon_run=app.dungeon_run)
                     app.state.inventory_remove(inv_idx, 1)
+                    self._track_action("item")
                     new_entries = self._combat.log[log_before:]
                     if new_entries:
                         self._write_log(new_entries)
@@ -241,6 +287,7 @@ class BattleScreen(Screen):
         if self._awaiting_continue or self._item_selecting:
             return
         c = self._combat
+        self._track_action("attack")
         log_before = len(c.log)
         c.player_turn_attack()
         new_entries = c.log[log_before:]
@@ -256,6 +303,7 @@ class BattleScreen(Screen):
         if self._awaiting_continue or self._item_selecting:
             return
         c = self._combat
+        self._track_action("defend")
         log_before = len(c.log)
         c.player_turn_defend()
         new_entries = c.log[log_before:]
@@ -268,6 +316,7 @@ class BattleScreen(Screen):
             return
         app: JambApp = self.app  # type: ignore[assignment]
         c = self._combat
+        self._track_action("special")
         highest = app.state.stats.highest()
         log_before = len(c.log)
         c.player_turn_special(highest)
@@ -278,6 +327,33 @@ class BattleScreen(Screen):
             self._do_enemy_turn()
         else:
             self._awaiting_continue = True
+            self._refresh()
+
+    def action_talk(self) -> None:
+        if self._awaiting_continue or self._item_selecting or self._swap_selecting:
+            return
+        app: JambApp = self.app  # type: ignore[assignment]
+        c = self._combat
+
+        # Only available with high SNARK and non-boss
+        snark = app.state.stats.snark
+        is_boss = c.enemy.get("boss_phases", 1) > 1 or c.boss_max_phases > 1
+        if snark < 80 or is_boss:
+            self._write_log(["Can't talk your way out of this one!"])
+            return
+
+        log_before = len(c.log)
+        success, msg = c.player_turn_talk()
+        new_entries = c.log[log_before:]
+        if new_entries:
+            self._write_log(new_entries)
+
+        if c.finished:
+            self._awaiting_continue = True
+            self._refresh()
+        else:
+            # Talk failed, enemy already attacked in player_turn_talk
+            c.end_of_turn()
             self._refresh()
 
     def action_use_item(self) -> None:
@@ -315,10 +391,13 @@ class BattleScreen(Screen):
             return
         import random
         c = self._combat
+        self._track_action("flee")
         flee_chance = 40 + c.player_speed * 2
         if random.randint(1, 100) <= flee_chance:
             self._write_log(["Jamb fled successfully!"])
             c.finished = True
+            c.victory = False
+            self._fled = True
             self._awaiting_continue = True
             self._refresh()
         else:

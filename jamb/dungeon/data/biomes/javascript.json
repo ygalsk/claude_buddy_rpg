@@ -1,0 +1,118 @@
+{
+  "id": "javascript",
+  "name": "The Async Abyss",
+  "color": "#F7DF1E",
+  "enemies": [
+    {
+      "id": "undefined_is_not_a_function", "name": "undefined",
+      "hp": 20, "attack": 7, "defense": 1, "speed": 8,
+      "xp": 7, "gold": 5, "floor_min": 1, "type": "debugging",
+      "loot": [["coffee", 0.4]],
+      "description": "Is not a function. Is not an object. Is not anything.",
+      "art": "undefined\n   ???  \n  is not\na function",
+      "special": null
+    },
+    {
+      "id": "nan_entity", "name": "NaN",
+      "hp": 25, "attack": 6, "defense": 3, "speed": 6,
+      "xp": 8, "gold": 5, "floor_min": 1, "type": "chaos",
+      "loot": [["coffee", 0.3], ["rubber_duck", 0.1]],
+      "description": "Not a Number, but typeof says it's a number. Classic.",
+      "art": " NaN !==\n  NaN \n typeof:\n number",
+      "special": "dynamic_typing"
+    },
+    {
+      "id": "callback_demon", "name": "Callback Demon",
+      "hp": 35, "attack": 8, "defense": 4, "speed": 5,
+      "xp": 13, "gold": 9, "floor_min": 2, "type": "patience",
+      "loot": [["energy_drink", 0.3], ["try_catch_cloak", 0.08]],
+      "description": "Nested 12 levels deep. Each level angrier than the last.",
+      "art": " cb(()=>{\n  cb(()=>{\n   cb(()=>{\n    😈",
+      "special": "callback_hell"
+    },
+    {
+      "id": "promise_reject", "name": "Unhandled Rejection",
+      "hp": 30, "attack": 10, "defense": 2, "speed": 9,
+      "xp": 14, "gold": 10, "floor_min": 2, "type": "chaos",
+      "loot": [["code_review_scroll", 0.2]],
+      "description": "A promise that was never caught. Now it catches you.",
+      "art": "Promise\n .then()\n .then()\n REJECT!",
+      "special": "async_attack"
+    },
+    {
+      "id": "prototype_pollution", "name": "Prototype Polluter",
+      "hp": 45, "attack": 9, "defense": 6, "speed": 5,
+      "xp": 17, "gold": 13, "floor_min": 2, "type": "snark",
+      "loot": [["firewall_vest", 0.1], ["ssh_key", 0.08]],
+      "description": "Overwrites __proto__ on everything it touches.",
+      "art": " __proto__\n  {evil}\n toString:\n HACKED",
+      "special": "corrupt"
+    },
+    {
+      "id": "event_loop_blocker", "name": "Event Loop Blocker",
+      "hp": 55, "attack": 7, "defense": 8, "speed": 2,
+      "xp": 20, "gold": 15, "floor_min": 3, "type": "patience",
+      "loot": [["git_stash", 0.15], ["ci_amulet", 0.08]],
+      "description": "while(true) in the main thread. Everything freezes.",
+      "art": " EVENT \n  LOOP\n BLOCK\n ░░░░░",
+      "special": "gil_lock"
+    }
+  ],
+  "bosses": [
+    {
+      "id": "node_modules", "name": "node_modules/",
+      "hp": 100, "attack": 8, "defense": 14, "speed": 1,
+      "xp": 50, "gold": 40, "floor_min": 1, "type": "patience",
+      "loot": [["prototype_chain", 0.5], ["docker_container", 0.3]],
+      "description": "2.4 GB. 847,000 files. You can't delete it. It IS the project now.",
+      "art": " node_\n modules\n /    \\\n|2.4 GB|\n \\ 847k/",
+      "special": "fortify",
+      "boss_phases": 2
+    },
+    {
+      "id": "framework_churn", "name": "The Framework Churn",
+      "hp": 140, "attack": 13, "defense": 7, "speed": 10,
+      "xp": 70, "gold": 55, "floor_min": 3, "type": "chaos",
+      "loot": [["rewrite_hammer", 0.3], ["github_copilot", 0.1]],
+      "description": "React, Vue, Svelte, Solid, Qwik — it's already obsolete.",
+      "art": " React→Vue\n  →Svelte\n   →Solid\n    →???",
+      "special": "dynamic_typing",
+      "boss_phases": 3
+    }
+  ],
+  "traps": [
+    {"id": "coercion_trap", "name": "Type Coercion", "damage_range": [5, 15], "description": "[] + {} === '[object Object]'. You take damage from the confusion.", "effect": null},
+    {"id": "this_trap", "name": "Lost 'this' Context", "damage_range": [6, 13], "description": "'this' points somewhere unexpected. It always does.", "effect": "stun"},
+    {"id": "npm_audit_trap", "name": "npm audit", "damage_range": [3, 10], "description": "47 vulnerabilities found. 12 critical. No fixes available.", "effect": null}
+  ],
+  "room_descriptions": {
+    "empty": [
+      "Package.json files are scattered everywhere, each with conflicting versions.",
+      "A forgotten .eslintrc argues with itself.",
+      "The walls are papered with npm deprecation warnings.",
+      "A babel config so complex it bends spacetime.",
+      "Transpiled output nobody was ever meant to read."
+    ],
+    "rest": [
+      "A node_modules-free zone. The air is light.",
+      "A clean TypeScript project with strict mode enabled.",
+      "Someone left a working webpack config. Miraculous."
+    ],
+    "treasure": [
+      "A dependency with zero vulnerabilities. Priceless.",
+      "A working tsconfig.json with no 'any' types in sight.",
+      "An npm package that hasn't been deprecated yet."
+    ]
+  },
+  "floor_flavor": [
+    "The event loop hums ominously...",
+    "Unhandled promise rejections echo through the void.",
+    "A faint 'use strict' is carved into the entrance.",
+    "The floor is littered with abandoned left-pad alternatives."
+  ],
+  "boss_clues": [
+    "The node_modules directory grows visibly deeper...",
+    "You hear the grinding of a thousand webpack loaders.",
+    "Framework logos flash and change on every surface."
+  ]
+}

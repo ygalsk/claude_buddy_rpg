@@ -10,7 +10,10 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label
 
 from ..constants import C
-from ..dungeon.generator import BOSS, EMPTY, ENEMY, ENTRANCE, REST, STAIRS, TRAP, TREASURE
+from ..dungeon.generator import (
+    BOSS, CURSED_CHEST, EMPTY, ENEMY, ENTRANCE, EXTRACTION, FORK,
+    REST, SHOP, STAIRS, TRAP, TREASURE,
+)
 from ..widgets.dungeon_map import DungeonMap
 
 if TYPE_CHECKING:
@@ -74,8 +77,16 @@ class DungeonScreen(Screen):
         floor = run.floor
 
         # Status bar
+        from ..dungeon import data_loader
+        biome_data = data_loader.load_biome(run.biome)
+        biome_name = biome_data.get("name", "Code Dungeon")
+        modifier_label = ""
+        if run.floor_modifier:
+            mod_name = run.floor_modifier.get("name", "")
+            modifier_label = f"  [bold #FF9E64]⚡{mod_name}[/]"
+
         self.query_one("#floor-info", Label).update(
-            f"  [bold]Floor {floor.number}[/]"
+            f"  [bold]Floor {floor.number}[/]  [{C.MUTED}]{biome_name}[/]{modifier_label}"
         )
         self.query_one("#hp-info", Label).update(
             f"[{C.ERROR}]HP: {run.hp}/{run.max_hp}[/]"
@@ -101,6 +112,10 @@ class DungeonScreen(Screen):
             REST: f"[{C.SECONDARY} bold]REST POINT[/]",
             TRAP: f"[{C.PRIMARY} bold]TRAP[/]",
             STAIRS: f"[{C.PRIMARY} bold]STAIRS DOWN[/]",
+            SHOP: f"[{C.WARNING} bold]SHOP[/]",
+            FORK: f"[{C.SECONDARY} bold]FORK[/]",
+            EXTRACTION: f"[{C.SUCCESS} bold]EXTRACTION[/]",
+            CURSED_CHEST: f"[{C.ERROR} bold]CURSED CHEST[/]",
         }.get(room.room_type if not room.cleared else EMPTY, "")
 
         self.query_one("#room-desc", Label).update(
@@ -111,7 +126,8 @@ class DungeonScreen(Screen):
         self.query_one("#dungeon-legend", Label).update(
             f"  [{C.SUCCESS}]@[/]=You  [{C.ERROR}]![/]=Enemy  [{C.ERROR}]B[/]=Boss  "
             f"[{C.WARNING}]?[/]=Loot  [{C.SECONDARY}]+[/]=Rest  [{C.PRIMARY}]^[/]=Trap  "
-            f"[{C.PRIMARY}]>[/]=Stairs  [{C.MUTED}]░[/]=Unknown"
+            f"[{C.PRIMARY}]>[/]=Stairs  [{C.WARNING}]$[/]=Shop  "
+            f"[{C.SECONDARY}]Y[/]=Fork  [{C.SUCCESS}]E[/]=Extract  [{C.ERROR}]C[/]=Cursed"
         )
 
     def _handle_room(self) -> None:
@@ -130,26 +146,88 @@ class DungeonScreen(Screen):
             app.show_loot(loot)
         elif room.room_type == REST and not room.cleared:
             room.cleared = True
-            healed = run.rest()
+            healed = run.rest(app.state.stats.as_dict())
             app.notify(f"Rested! Healed {healed} HP.", title="Rest Point", timeout=3)
             self._refresh()
         elif room.room_type == TRAP and not room.cleared:
             room.cleared = True
-            damage, msg = run.apply_trap(app.state.stats.as_dict())
+            damage, msg = run.apply_trap(app.state.stats.as_dict(), trap=room.trap)
             app.notify(msg, title="Trap!", severity="warning", timeout=3)
             if not run.alive:
                 app.dungeon_death()
             else:
                 self._refresh()
         elif room.room_type == STAIRS:
-            run.next_floor()
+            run.next_floor(stats=app.state.stats.as_dict())
+            modifier_msg = ""
+            if run.floor_modifier:
+                modifier_msg = f" ⚡{run.floor_modifier.get('name', '')}: {run.floor_modifier.get('description', '')}"
             app.notify(
-                f"Descending to Floor {run.floor.number}...",
+                f"Descending to Floor {run.floor.number}...{modifier_msg}",
                 title="Deeper!",
-                timeout=2,
+                timeout=3,
             )
             self._refresh()
+        elif room.room_type == SHOP and not room.cleared:
+            room.cleared = True
+            app.show_dungeon_shop()
+        elif room.room_type == EXTRACTION and not room.cleared:
+            room.cleared = True
+            app.show_extraction()
+        elif room.room_type == FORK and not room.cleared:
+            if room.fork_options:
+                app.show_fork(room.fork_options)
+            else:
+                room.cleared = True
+                self._refresh()
+        elif room.room_type == CURSED_CHEST and not room.cleared:
+            room.cleared = True
+            self._handle_cursed_chest()
         else:
+            self._refresh()
+
+    def _handle_cursed_chest(self) -> None:
+        """Open a cursed chest — 60% rare loot, 40% curse."""
+        import random
+        app: JambApp = self.app  # type: ignore[assignment]
+        run = app.dungeon_run
+        if not run:
+            return
+
+        if random.random() < 0.6:
+            # Good loot — force rare/legendary
+            from ..dungeon.items import items_by_rarity
+            pool = items_by_rarity("rare") + items_by_rarity("legendary")
+            if pool:
+                item = random.choice(pool)
+                gold = random.randint(15, 40)
+                run.gold_earned += gold
+                app.notify("The chest reveals rare loot!", title="Lucky!", timeout=3)
+                app.show_loot({"item": dict(item), "gold": gold})
+            else:
+                self._refresh()
+        else:
+            # Curse — temporary debuff
+            curses = [
+                ("Max HP reduced by 10%", "hp"),
+                ("Attack reduced by 2", "attack"),
+                ("Defense reduced by 1", "defense"),
+            ]
+            curse_name, curse_type = random.choice(curses)
+            if curse_type == "hp":
+                reduction = run.max_hp // 10
+                run.max_hp -= reduction
+                run.hp = min(run.hp, run.max_hp)
+            elif curse_type == "attack":
+                pass  # Applied in next combat
+            elif curse_type == "defense":
+                pass  # Applied in next combat
+            app.notify(
+                f"CURSED! {curse_name} (until next rest)",
+                title="Curse!",
+                severity="warning",
+                timeout=4,
+            )
             self._refresh()
 
     def _move(self, dx: int, dy: int) -> None:
@@ -158,7 +236,13 @@ class DungeonScreen(Screen):
         if not run:
             return
 
-        room = run.floor.move_player(dx, dy)
+        # Fog modifier: don't reveal adjacent rooms
+        is_fog = (run.floor_modifier or {}).get("id") == "fog"
+        if is_fog:
+            room = run.floor.move_player_fog(dx, dy)
+        else:
+            room = run.floor.move_player(dx, dy)
+
         if room:
             self._handle_room()
         else:

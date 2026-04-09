@@ -9,6 +9,8 @@ from typing import Optional
 from .generator import Floor
 from .items import CONSUMABLES, ITEMS_BY_ID, items_by_rarity
 from .types import get_effectiveness, effectiveness_label
+from .status_effects import StatusEffect, process_effects, apply_shield_damage, is_stunned
+
 
 def _weapon_attack_bonus(weapon: dict) -> int:
     """Sum all attack-related bonuses from a weapon."""
@@ -45,6 +47,15 @@ class CombatState:
     log: list[str] = field(default_factory=list)
     finished: bool = False
     victory: bool = False
+    # ── New fields ──────────────────────────────────────────────
+    player_effects: list[StatusEffect] = field(default_factory=list)
+    enemy_effects: list[StatusEffect] = field(default_factory=list)
+    boss_phase: int = 1
+    boss_max_phases: int = 1
+    enemy_turn_count: int = 0
+    pending_damage: list[tuple[int, int]] = field(default_factory=list)  # (resolve_turn, damage)
+    # Stats reference for companion stat influences
+    _stats: dict = field(default_factory=dict)
 
     @classmethod
     def from_stats(cls, enemy: dict, stats: dict, equipment: dict) -> CombatState:
@@ -86,6 +97,7 @@ class CombatState:
             speed_bonus += ab
 
         max_hp = 50 + patience * 2
+        boss_phases = enemy.get("boss_phases", 1)
 
         return cls(
             enemy=enemy,
@@ -102,10 +114,18 @@ class CombatState:
             dodge_chance=min(25, snark // 10),
             weapon_type=weapon_type,
             equipment=dict(equipment),
+            boss_phase=1,
+            boss_max_phases=boss_phases,
+            _stats=dict(stats),
         )
 
     def player_turn_attack(self) -> str:
         """Execute player attack."""
+        if is_stunned(self.player_effects):
+            msg = "Jamb is stunned and can't act!"
+            self.log.append(msg)
+            return msg
+
         self.defending = False
         attack_power = self.player_attack + self.attack_buff
 
@@ -124,6 +144,12 @@ class CombatState:
         enemy_type = self.enemy.get("type")
         multiplier = get_effectiveness(self.weapon_type, enemy_type)
         damage = max(1, int(raw_damage * multiplier))
+
+        # Apply shield effects on enemy
+        damage, shield_msgs = apply_shield_damage(self.enemy_effects, damage)
+        for m in shield_msgs:
+            self.log.append(m)
+
         self.enemy_hp = max(0, self.enemy_hp - damage)
 
         msg = f"Jamb attacks for {damage} damage!"
@@ -135,15 +161,18 @@ class CombatState:
             msg += f" {eff_label}"
         self.log.append(msg)
 
-        if self.enemy_hp <= 0:
-            self.finished = True
-            self.victory = True
-            self.log.append(f"{self.enemy['name']} is defeated!")
+        self._check_enemy_defeated()
+        self._check_boss_phase_transition()
 
         return msg
 
     def player_turn_defend(self) -> str:
         """Player defends this turn."""
+        if is_stunned(self.player_effects):
+            msg = "Jamb is stunned and can't act!"
+            self.log.append(msg)
+            return msg
+
         self.defending = True
         self.analyzed = False
         msg = "Jamb braces for impact! (Defense doubled this turn)"
@@ -152,6 +181,11 @@ class CombatState:
 
     def player_turn_special(self, highest_stat: str) -> str:
         """Use special ability based on dominant stat."""
+        if is_stunned(self.player_effects):
+            msg = "Jamb is stunned and can't act!"
+            self.log.append(msg)
+            return msg
+
         self.defending = False
         self.analyzed = False
 
@@ -201,12 +235,31 @@ class CombatState:
             msg += f" {eff_label}"
         self.log.append(msg)
 
-        if self.enemy_hp <= 0:
-            self.finished = True
-            self.victory = True
-            self.log.append(f"{self.enemy['name']} is defeated!")
+        self._check_enemy_defeated()
+        self._check_boss_phase_transition()
 
         return msg
+
+    def player_turn_talk(self) -> tuple[bool, str]:
+        """Attempt to talk the enemy out of fighting (SNARK ability).
+
+        Returns (success, message).
+        """
+        snark = self._stats.get("snark", 0)
+        success_chance = min(50, 20 + snark // 10)
+
+        if random.randint(1, 100) <= success_chance:
+            msg = f"Jamb roasts {self.enemy['name']} so hard it leaves in shame!"
+            self.log.append(msg)
+            self.finished = True
+            self.victory = True
+            return True, msg
+        else:
+            msg = f"Your roast falls flat. {self.enemy['name']} attacks in anger!"
+            self.log.append(msg)
+            # Free enemy attack
+            self.enemy_turn()
+            return False, msg
 
     def swap_weapon(self, new_weapon_id: str) -> str:
         """Swap equipped weapon mid-combat. Costs the player's turn."""
@@ -234,7 +287,7 @@ class CombatState:
         self.log.append(msg)
         return msg
 
-    def player_use_item(self, item: dict) -> str:
+    def player_use_item(self, item: dict, dungeon_run: DungeonRun | None = None) -> str:
         """Use a consumable item."""
         self.defending = False
         self.analyzed = False
@@ -250,14 +303,36 @@ class CombatState:
             self.attack_buff += item["attack_buff"]
             self.buff_turns = item.get("turns", 3)
             msg = f"Used {item['name']}! Attack +{item['attack_buff']} for {self.buff_turns} turns."
+        elif item.get("save_hp") and dungeon_run:
+            dungeon_run.saved_hp = self.player_hp
+            msg = f"Used {item['name']}! Current HP ({self.player_hp}) stashed for later."
+        elif item.get("revive") and dungeon_run:
+            dungeon_run.has_revive = True
+            msg = f"Used {item['name']}! Rollback point set — one free revive if defeated."
         else:
             msg = f"Used {item['name']}!"
 
         self.log.append(msg)
         return msg
 
+    def player_restore_hp(self, dungeon_run: DungeonRun) -> str:
+        """Restore HP from git stash. Costs a turn."""
+        if dungeon_run.saved_hp is None:
+            msg = "No stashed HP to restore!"
+            self.log.append(msg)
+            return msg
+
+        old_hp = self.player_hp
+        self.player_hp = min(self.player_max_hp, dungeon_run.saved_hp)
+        dungeon_run.saved_hp = None
+        msg = f"Restored stashed HP! ({old_hp} → {self.player_hp})"
+        self.log.append(msg)
+        return msg
+
     def enemy_turn(self) -> str:
         """Execute enemy turn."""
+        self.enemy_turn_count += 1
+
         # Dodge check
         if random.randint(1, 100) <= self.dodge_chance:
             msg = f"Jamb dodges {self.enemy['name']}'s attack!"
@@ -266,6 +341,12 @@ class CombatState:
 
         effective_defense = self.player_defense * (2 if self.defending else 1)
         damage = max(1, self.enemy_attack - effective_defense + random.randint(-1, 2))
+
+        # Apply shield effects on player
+        damage, shield_msgs = apply_shield_damage(self.player_effects, damage)
+        for m in shield_msgs:
+            self.log.append(m)
+
         self.player_hp = max(0, self.player_hp - damage)
 
         msg = f"{self.enemy['name']} attacks for {damage} damage!"
@@ -286,21 +367,25 @@ class CombatState:
         if not special:
             return None
 
+        msg = None
+
+        # ── Original specials ───────────────────────────────
         if special == "grow":
             self.enemy_attack += 1
             msg = f"{self.enemy['name']} grows stronger! (ATK +1)"
         elif special == "double_attack":
-            # Second attack
             msg = self.enemy_turn()
             return f"Double attack! " + msg
         elif special == "lock" and random.random() < 0.3:
-            msg = "DEADLOCKED! Jamb can't move this turn!"
+            self.player_effects.append(StatusEffect(
+                id="lock", name="Deadlocked", duration=1,
+                effect_type="stun", value=0,
+            ))
+            msg = "DEADLOCKED! Jamb can't move next turn!"
         elif special == "tangle":
             if self.player_attack > 3:
                 self.player_attack -= 1
                 msg = f"Tangled! Jamb's attack reduced! (ATK -{1})"
-            else:
-                msg = None
         elif special == "fortify":
             self.enemy_defense += 1
             msg = f"{self.enemy['name']} fortifies! (DEF +1)"
@@ -314,33 +399,209 @@ class CombatState:
                 msg = "Corrupted! Defense reduced!"
             else:
                 msg = "Corruption fizzles..."
-        else:
-            msg = None
+
+        # ── New biome specials ──────────────────────────────
+        elif special == "dynamic_typing":
+            from .types import TYPES
+            old_type = self.enemy.get("type", "debugging")
+            new_type = random.choice([t for t in TYPES if t != old_type])
+            self.enemy["type"] = new_type
+            msg = f"{self.enemy['name']} shifts type! Now {new_type.upper()}-type!"
+
+        elif special == "gil_lock" and random.random() < 0.3:
+            self.player_effects.append(StatusEffect(
+                id="gil_lock", name="GIL Locked", duration=1,
+                effect_type="stun", value=0,
+            ))
+            msg = "GIL LOCKED! Jamb can't act next turn!"
+
+        elif special == "async_attack":
+            damage = max(1, self.enemy_attack - self.player_defense // 2)
+            resolve_turn = self.turn + 2
+            self.pending_damage.append((resolve_turn, damage))
+            msg = f"{self.enemy['name']} queues an async attack! (Resolves in 2 turns)"
+
+        elif special == "callback_hell":
+            # Handled at the screen level — sets a flag for random action
+            self.player_effects.append(StatusEffect(
+                id="callback_hell", name="Callback Hell", duration=2,
+                effect_type="debuff", value=0,
+            ))
+            msg = "CALLBACK HELL! Jamb's actions may misfire!"
+
+        elif special == "segfault_strike":
+            # Massive hit every 3rd turn
+            if self.enemy_turn_count % 3 == 0:
+                damage = int(self.enemy_attack * 2.5)
+                effective_defense = self.player_defense * (2 if self.defending else 1)
+                actual = max(1, damage - effective_defense)
+                self.player_hp = max(0, self.player_hp - actual)
+                msg = f"SEGFAULT! {self.enemy['name']} crashes into Jamb for {actual} massive damage!"
+                if self.player_hp <= 0:
+                    self.finished = True
+                    self.victory = False
+                    self.log.append("Jamb has been defeated!")
+            else:
+                msg = f"{self.enemy['name']} glitches... building up to something."
+
+        elif special == "memory_leak_drain":
+            # Apply DoT if not already active
+            has_dot = any(e.id == "memory_leak" for e in self.player_effects)
+            if not has_dot:
+                self.player_effects.append(StatusEffect(
+                    id="memory_leak", name="Memory Leak", duration=4,
+                    effect_type="dot", value=3,
+                ))
+                msg = "MEMORY LEAK! Jamb loses 3 HP per turn!"
+            else:
+                msg = "The memory leak continues to drain..."
+
+        elif special == "borrow_checker":
+            # Shield if not already active
+            has_shield = any(e.id == "borrow_checker" for e in self.enemy_effects)
+            if not has_shield:
+                shield_hp = self.enemy_defense * 2
+                self.enemy_effects.append(StatusEffect(
+                    id="borrow_checker", name="Borrow Checker", duration=-1,
+                    effect_type="shield", value=shield_hp,
+                ))
+                msg = f"BORROW CHECKER! A shield of {shield_hp} HP protects the enemy!"
+            else:
+                msg = "The borrow checker stands firm."
+
+        elif special == "lifetime":
+            self.enemy_attack += 2
+            msg = f"{self.enemy['name']}'s lifetime grows! (ATK +2)"
+
+        elif special == "goroutine_swarm":
+            if self.enemy_hp <= self.enemy_max_hp // 2 and not hasattr(self, '_swarm_triggered'):
+                self._swarm_triggered = True
+                msg = f"{self.enemy['name']} splits into goroutines!"
+                # The battle screen handles spawning sequential fights
+            else:
+                msg = f"{self.enemy['name']} spawns background goroutines..."
+
+        elif special == "nil_panic":
+            if random.random() < 0.05:
+                damage = int(self.player_hp * 0.9)
+                self.player_hp = max(1, self.player_hp - damage)
+                msg = f"NIL PANIC! {self.enemy['name']} crashes Jamb for {damage} damage!"
+                if self.player_hp <= 0:
+                    self.finished = True
+                    self.victory = False
+                    self.log.append("Jamb has been defeated!")
+            else:
+                msg = f"{self.enemy['name']} twitches nervously..."
 
         if msg:
             self.log.append(msg)
         return msg
 
-    def end_of_turn(self) -> None:
-        """Process end-of-turn effects."""
+    def end_of_turn(self) -> list[str]:
+        """Process end-of-turn effects. Returns log messages."""
+        messages: list[str] = []
         self.turn += 1
+
         if self.buff_turns > 0:
             self.buff_turns -= 1
             if self.buff_turns <= 0:
                 self.attack_buff = 0
 
+        # Process player status effects
+        self.player_hp, effect_msgs = process_effects(self.player_effects, self.player_hp)
+        messages.extend(effect_msgs)
+
+        # Process enemy status effects (remove expired shields etc.)
+        self.enemy_hp, enemy_msgs = process_effects(self.enemy_effects, self.enemy_hp)
+        messages.extend(enemy_msgs)
+
+        # Resolve pending async damage
+        resolved = []
+        for resolve_turn, damage in self.pending_damage:
+            if self.turn >= resolve_turn:
+                actual = max(1, damage)
+                self.player_hp = max(0, self.player_hp - actual)
+                messages.append(f"The async attack resolves! {actual} damage!")
+                resolved.append((resolve_turn, damage))
+        for r in resolved:
+            self.pending_damage.remove(r)
+
+        # Check death from effects
+        if self.player_hp <= 0:
+            self.finished = True
+            self.victory = False
+            messages.append("Jamb has been defeated!")
+        if self.enemy_hp <= 0:
+            self.finished = True
+            self.victory = True
+            messages.append(f"{self.enemy['name']} is defeated!")
+
         # Equipment heal-per-turn effects are checked at the screen level
         self.defending = False
 
-    def calculate_rewards(self) -> tuple[int, int, list[dict]]:
+        for m in messages:
+            self.log.append(m)
+
+        return messages
+
+    def _check_enemy_defeated(self) -> None:
+        """Check if enemy HP reached 0."""
+        if self.enemy_hp <= 0:
+            self.finished = True
+            self.victory = True
+            self.log.append(f"{self.enemy['name']} is defeated!")
+
+    def _check_boss_phase_transition(self) -> None:
+        """Check for boss phase transitions at HP thresholds."""
+        if self.boss_max_phases <= 1 or self.enemy_hp <= 0:
+            return
+
+        # Phase 2 at 50%, Phase 3 at 25%
+        hp_pct = self.enemy_hp / self.enemy_max_hp
+        target_phase = 1
+        if hp_pct <= 0.25 and self.boss_max_phases >= 3:
+            target_phase = 3
+        elif hp_pct <= 0.5 and self.boss_max_phases >= 2:
+            target_phase = 2
+
+        if target_phase > self.boss_phase:
+            self.boss_phase = target_phase
+            # Heal 10% and boost stats
+            heal = self.enemy_max_hp // 10
+            self.enemy_hp = min(self.enemy_max_hp, self.enemy_hp + heal)
+            self.enemy_attack += 2
+            self.enemy_defense += 1
+            self.finished = False  # Cancel any defeat from this hit
+            self.victory = False
+            msg = (
+                f"*** {self.enemy['name']} enters Phase {self.boss_phase}! ***\n"
+                f"   Heals {heal} HP! ATK +2, DEF +1!"
+            )
+            self.log.append(msg)
+
+    def has_callback_hell(self) -> bool:
+        """Check if callback hell debuff is active (for screen-level random action)."""
+        return any(e.id == "callback_hell" for e in self.player_effects)
+
+    def has_goroutine_split(self) -> bool:
+        """Check if the goroutine swarm split was triggered."""
+        return getattr(self, '_swarm_triggered', False)
+
+    def calculate_rewards(self, talk_victory: bool = False) -> tuple[int, int, list[dict]]:
         """Return (xp, gold, loot_items) for victory."""
         if not self.victory:
             return 0, 0, []
 
         xp = self.enemy.get("xp", 10)
         gold = self.enemy.get("gold", 5)
-        loot = []
 
+        # Talk victories give partial rewards
+        if talk_victory:
+            xp = xp // 2
+            gold = gold // 2
+            return xp, gold, []
+
+        loot = []
         for item_id, chance in self.enemy.get("loot", []):
             if random.random() < chance:
                 item = ITEMS_BY_ID.get(item_id)
@@ -361,38 +622,97 @@ class DungeonRun:
     items_found: list[dict] = field(default_factory=list)
     floors_cleared: int = 0
     alive: bool = True
+    # ── New fields ──────────────────────────────────────────────
+    biome: str = "generic"
+    floor_modifier: dict | None = None  # active modifier for current floor
+    banked_gold: int = 0
+    banked_items: list[dict] = field(default_factory=list)
+    enemies_defeated: int = 0
+    saved_hp: int | None = None  # git stash saved HP
+    has_revive: bool = False  # rollback scroll active
+    action_counts: dict = field(default_factory=lambda: {
+        "attack": 0, "defend": 0, "flee": 0, "item": 0, "special": 0,
+    })
+    last_death_enemy: str | None = None  # enemy id that killed us
 
     @classmethod
-    def new_run(cls, stats: dict, equipment: dict) -> DungeonRun:
+    def new_run(cls, stats: dict, equipment: dict, biome: str = "generic") -> DungeonRun:
         patience = stats.get("patience", 0)
         max_hp = 50 + patience * 2
         floor = Floor(number=1)
-        floor.generate()
-        return cls(floor=floor, hp=max_hp, max_hp=max_hp)
+        floor.generate(biome=biome, stats=stats)
+        return cls(floor=floor, hp=max_hp, max_hp=max_hp, biome=biome)
 
-    def next_floor(self) -> None:
+    def next_floor(self, stats: dict | None = None) -> None:
         self.floors_cleared += 1
         new_floor = Floor(number=self.floor.number + 1)
-        new_floor.generate()
+        # Pick a floor modifier (after floor 5)
+        if self.floor.number + 1 >= 5:
+            self.floor_modifier = self._pick_modifier()
+        else:
+            self.floor_modifier = None
+        new_floor.generate(biome=self.biome, stats=stats, floor_modifier=self.floor_modifier)
         self.floor = new_floor
 
-    def apply_trap(self, stats: dict) -> tuple[int, str]:
+    def _pick_modifier(self) -> dict | None:
+        """40% chance of no modifier; otherwise random."""
+        if random.random() < 0.4:
+            return None
+        from . import data_loader
+        modifiers = data_loader.load_floor_modifiers()
+        if not modifiers:
+            return None
+        return random.choice(modifiers)
+
+    def apply_trap(self, stats: dict, trap: dict | None = None) -> tuple[int, str]:
         """Apply trap damage. Returns (damage, message)."""
-        # Wisdom reduces trap damage
         wisdom = stats.get("wisdom", 0)
-        base_damage = random.randint(5, 15)
+        patience = stats.get("patience", 0)
+
+        if trap and "damage_range" in trap:
+            lo, hi = trap["damage_range"]
+            base_damage = random.randint(lo, hi)
+            description = trap.get("description", "A trap springs!")
+        else:
+            base_damage = random.randint(5, 15)
+            description = "Trap"
+
+        # Wisdom reduces trap damage
         reduction = wisdom // 20
+        # High patience further reduces
+        if patience >= 80:
+            reduction += 3
+
         damage = max(1, base_damage - reduction)
         self.hp = max(0, self.hp - damage)
         if self.hp <= 0:
             self.alive = False
-        return damage, f"Trap deals {damage} damage!" + (f" (Wisdom reduced by {reduction})" if reduction else "")
 
-    def rest(self) -> int:
+        msg = f"{description} ({damage} damage!)"
+        if reduction:
+            msg += f" (Reduced by {reduction})"
+        return damage, msg
+
+    def rest(self, stats: dict | None = None) -> int:
         """Rest at a rest point. Returns HP healed."""
-        heal = min(self.max_hp // 3, self.max_hp - self.hp)
+        # High patience heals 50% instead of 33%
+        patience = (stats or {}).get("patience", 0)
+        ratio = 2 if patience >= 80 else 3
+        heal = min(self.max_hp // ratio, self.max_hp - self.hp)
         self.hp += heal
         return heal
+
+    def bank_loot(self) -> tuple[int, int]:
+        """Bank current un-banked loot at an extraction point.
+        Returns (gold_banked, items_banked_count).
+        """
+        gold = self.gold_earned
+        items = len(self.items_found)
+        self.banked_gold += gold
+        self.banked_items.extend(self.items_found)
+        self.gold_earned = 0
+        self.items_found = []
+        return gold, items
 
     def generate_treasure(self) -> dict:
         """Generate random treasure loot."""
