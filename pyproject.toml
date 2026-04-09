@@ -10,7 +10,7 @@ mcp = ["mcp>=1.0"]
 all = ["mcp>=1.0"]
 
 [tool.setuptools.package-data]
-codecritter = ["*.tcss"]
+codecritter = ["*.tcss", "dungeon/data/**/*.json"]
 
 [project.scripts]
 codecritter = "codecritter.__main__:main"

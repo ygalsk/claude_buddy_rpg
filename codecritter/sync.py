@@ -39,12 +39,10 @@ def sync_bones_to_tui(state: CodecritterState) -> bool:
     if not state.bones_synced:
         # First sync: seed TUI stats from native base stats
         # Scale 0-100 → proportional position in 0-255 range
+        cap = state.stat_cap()
         for stat_name, base_val in bones["stats"].items():
-            current = getattr(state.stats, stat_name, 0)
-            scaled = int(base_val * 2.55)  # 0-100 → 0-255
-            # Only seed if TUI stat is still at or near default
-            if current <= scaled:
-                state.stats.add(stat_name, scaled - current, state.stat_cap())
+            scaled = min(int(base_val * 2.55), cap)  # 0-100 → 0-255
+            setattr(state.stats, stat_name, scaled)
 
     state.bones_synced = True
     return True
