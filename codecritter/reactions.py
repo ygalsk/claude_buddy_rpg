@@ -280,4 +280,5 @@ def set_reaction(state: CodecritterState, text: str, reason: str) -> bool:
     state.reaction = text
     state.reaction_reason = reason
     state.reaction_ts = now
+    state.current_quip = f"💬 {text}"
     return True

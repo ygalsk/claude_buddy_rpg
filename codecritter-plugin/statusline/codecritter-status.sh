@@ -29,7 +29,7 @@ RARITY=$(_j '.native_rarity' 'common')
 RARITY="${RARITY,,}"
 # Prefer current_quip (TUI-synced) over reaction (hook-set)
 REACTION=$(_j '.current_quip' '')
-[ -z "$REACTION" ] || [ "$REACTION" = "null" ] && REACTION=$(_j '.reaction' '')
+[ -z "$REACTION" ] || [ "$REACTION" = "null" ] || [ "$REACTION" = "..." ] && REACTION=$(_j '.reaction' '')
 
 cat > /dev/null  # drain stdin
 

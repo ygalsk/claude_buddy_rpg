@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from textual.message import Message
 from textual.widgets import Static
 
@@ -18,8 +16,6 @@ MOOD_ICONS: dict[str, str] = {
     "chaotic": "⚡ Jamb shrieks...",
 }
 
-# How long a reaction stays visible before falling back to quips (seconds)
-REACTION_TTL = 60.0
 
 
 class SpeechBubble(Static):
@@ -46,10 +42,9 @@ class SpeechBubble(Static):
         self.post_message(self.Changed(self._last_text))
 
     def _current_text(self) -> str:
-        """Show active reaction if recent, otherwise a static default."""
-        if self._reaction and self._reaction_ts:
-            if (time.time() - self._reaction_ts) < REACTION_TTL:
-                return f'💬 {self._reaction}'
+        """Show active reaction, or a static default if none set."""
+        if self._reaction:
+            return f'💬 {self._reaction}'
         return "..."
 
     def _emit(self, text: str) -> None:
